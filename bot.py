@@ -374,7 +374,7 @@ def main():
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(admin_action, pattern="^adm_"))
     # Extra handler outside conversation for web_app_data
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=1)
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=-1)
     
     log.info("✅ Xon Halol bot ishga tushdi!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
