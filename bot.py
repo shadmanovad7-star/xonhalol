@@ -147,6 +147,10 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     lang = get_lang(uid)
     text = update.message.text
+    if text in ["buyurtma", "заказ", "order", "Buyurtma", "ORDER"]:
+        user_store.setdefault(uid, {})["cart"] = []
+        await update.message.reply_text(tx(uid, "enter_name"), reply_markup=ReplyKeyboardRemove())
+        return GET_NAME
     if text == T[lang]["btn_products"]:
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton(T[lang]["open_btn"], web_app=WebAppInfo(url=MINI_APP_URL))
