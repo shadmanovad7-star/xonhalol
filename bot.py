@@ -12,11 +12,10 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
-import os
-BOT_TOKEN    = os.getenv("BOT_TOKEN", "8635217482:AAEkjYMV1qzzA6_1hEsTmhpyGlgpoS7J2XA")
-ADMIN_ID     = int(os.getenv("ADMIN_ID", "6417175819"))
-ADMIN_ID2    = int(os.getenv("ADMIN_ID2", "5345513906"))
-MINI_APP_URL = os.getenv("MINI_APP_URL", "https://shadmanovad7-star.github.io/xonhalol/")
+BOT_TOKEN    = "8635217482:AAEkjYMV1qzzA6_1hEsTmhpyGlgpoS7J2XA"
+ADMIN_ID     = 6417175819
+ADMIN_ID2    = 5345513906
+MINI_APP_URL = "https://shadmanovad7-star.github.io/xonhalol/"
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -124,6 +123,16 @@ async def go_main(msg, uid, context):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_store.setdefault(uid, {})
+    
+    # Check if started from mini app order button
+    args = context.args
+    if args and args[0] == 'order':
+        lang = get_lang(uid)
+        await update.message.reply_text(
+            tx(uid, 'enter_name'),
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return GET_NAME
     await update.message.reply_text(
         "🍽 Muzlatilgan mazali taomlar\n🏠 Uy ta'mini eslatuvchi lazzat\n🕐 Buyurtmalar 24/7"
     )
@@ -147,10 +156,6 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     lang = get_lang(uid)
     text = update.message.text
-    if text in ["buyurtma", "заказ", "order", "Buyurtma", "ORDER"]:
-        user_store.setdefault(uid, {})["cart"] = []
-        await update.message.reply_text(tx(uid, "enter_name"), reply_markup=ReplyKeyboardRemove())
-        return GET_NAME
     if text == T[lang]["btn_products"]:
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton(T[lang]["open_btn"], web_app=WebAppInfo(url=MINI_APP_URL))
@@ -347,6 +352,16 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     return await go_main(update.message, uid, context)
 
+async def cmd_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_lang(uid)
+    # Start checkout without cart - ask to select from mini app
+    await update.message.reply_text(
+        "📝 Ismingizni kiriting:" if lang=="uz" else "📝 Введите ваше имя:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return GET_NAME
+
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -354,7 +369,10 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     
     conv = ConversationHandler(
-        entry_points=[CommandHandler("start", cmd_start)],
+        entry_points=[
+            CommandHandler("start", cmd_start),
+            CommandHandler("order", cmd_order),
+        ],
         states={
             SELECT_LANG: [CallbackQueryHandler(cb_lang, pattern="^lang_")],
             MAIN_MENU: [
@@ -371,13 +389,16 @@ def main():
         allow_reentry=True,
     )
     
+    # web_app_data MUST be before conversation handler
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=0)
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(admin_action, pattern="^adm_"))
-    # Extra handler outside conversation for web_app_data
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=-1)
     
     log.info("✅ Xon Halol bot ishga tushdi!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
+
+# This is already handled - when user closes mini app, 
+# they can press "Buyurtma berish" button in main menu
