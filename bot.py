@@ -1,3 +1,4 @@
+import os
 import logging
 import json
 import asyncio
@@ -12,10 +13,10 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
-BOT_TOKEN    = "8635217482:AAEkjYMV1qzzA6_1hEsTmhpyGlgpoS7J2XA"
-ADMIN_ID     = 6417175819
-ADMIN_ID2    = 5345513906
-MINI_APP_URL = "https://shadmanovad7-star.github.io/xonhalol/"
+BOT_TOKEN    = os.getenv("BOT_TOKEN", "8635217482:AAEkjYMV1qzzA6_1hEsTmhpyGlgpoS7J2XA")
+ADMIN_ID     = int(os.getenv("ADMIN_ID", "6417175819"))
+ADMIN_ID2    = int(os.getenv("ADMIN_ID2", "5345513906"))
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://shadmanovad7-star.github.io/xonhalol/")
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ SELECT_LANG, MAIN_MENU, GET_NAME, GET_PHONE, GET_ADDRESS, GET_PAYMENT, CONFIRM_O
 
 T = {
     "uz": {
-        "welcome": "Assalomu alaykum! 👋\nTilni tanlang:",
+        "welcome": "Tilni tanlang:",
         "main_menu": "Xush kelibsiz! 😊",
         "btn_products": "🛍 Mahsulotlar",
         "btn_orders": "📦 Buyurtmalarim",
@@ -61,7 +62,7 @@ T = {
         },
     },
     "ru": {
-        "welcome": "Привет! 👋\nВыберите язык:",
+        "welcome": "Выберите язык:",
         "main_menu": "Добро пожаловать! 😊",
         "btn_products": "🛍 Товары",
         "btn_orders": "📦 Мои заказы",
@@ -124,20 +125,36 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_store.setdefault(uid, {})
     
-    # Check if started from mini app
+    # Check if started with order parameter
     args = context.args
-    if args and (args[0] == 'order' or args[0].startswith('cart')):
-        lang = get_lang(uid)
-        # Extract cart info if present
-        if args[0].startswith('cart:'):
-            from urllib.parse import unquote
-            cart_text = unquote(args[0][5:])
-            user_store[uid]['cart_text'] = cart_text
-        await update.message.reply_text(
-            tx(uid, 'enter_name'),
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return GET_NAME
+    if args:
+        param = args[0]
+        if param.startswith('cart_'):
+            # Has cart data
+            try:
+                import base64
+                cart_b64 = param[5:]
+                # Pad base64
+                cart_b64 += '=' * (4 - len(cart_b64) % 4)
+                cart_json = base64.b64decode(cart_b64).decode('utf-8')
+                cart = json.loads(cart_json)
+                user_store[uid]['cart'] = cart
+                user_store[uid]['cart_text'] = '\n'.join([f"• {i['name']} × {i['qty']} = {i['price']*i['qty']:,} so'm" for i in cart])
+            except:
+                user_store[uid]['cart_text'] = ''
+            
+            await update.message.reply_text(
+                tx(uid, "enter_name"),
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return GET_NAME
+        elif param == 'order':
+            await update.message.reply_text(
+                tx(uid, "enter_name"),
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return GET_NAME
+
     await update.message.reply_text(
         "🍽 Muzlatilgan mazali taomlar\n🏠 Uy ta'mini eslatuvchi lazzat\n🕐 Buyurtmalar 24/7"
     )
@@ -182,17 +199,18 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    log.info(f"WebApp data received from {uid}")
+    log.info(f"WebApp data from {uid}")
     try:
         data = json.loads(update.message.web_app_data.data)
-        log.info(f"Data: {data.get('action')}, cart items: {len(data.get('cart',[]))}")
+        log.info(f"Action: {data.get('action')}, items: {len(data.get('cart',[]))}")
     except Exception as e:
-        log.error(f"WebApp data parse error: {e}")
+        log.error(f"WebApp parse error: {e}")
         return MAIN_MENU
 
     if data.get("action") == "checkout":
         cart = data.get("cart", [])
         user_store.setdefault(uid, {})["cart"] = cart
+        user_store[uid]["cart_text"] = '\n'.join([f"• {i['name']} × {i['qty']} = {i['price']*i['qty']:,} so'm" for i in cart])
         await update.message.reply_text(
             tx(uid, "enter_name"),
             reply_markup=ReplyKeyboardRemove()
@@ -243,8 +261,12 @@ async def get_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     uid = q.from_user.id
     lang = get_lang(uid)
-    pay_map = {"pay_click":"Click 💳","pay_payme":"Payme 💰","pay_cash":"Naqd 💵" if lang=="uz" else "Наличные 💵"}
-    payment = pay_map.get(q.data,"Naqd")
+    pay_map = {
+        "pay_click": "Click 💳",
+        "pay_payme": "Payme 💰",
+        "pay_cash": "Naqd 💵" if lang=="uz" else "Наличные 💵"
+    }
+    payment = pay_map.get(q.data, "Naqd")
     user_store[uid]["payment"] = payment
 
     if q.data == "pay_cash":
@@ -255,18 +277,30 @@ async def get_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ud = user_store[uid]
     cart = ud.get("cart", [])
-    items = ""
-    total = 0
-    for it in cart:
-        line = it["price"] * it["qty"]
-        total += line
-        items += f"  • {it['name']} × {it['qty']} = {line:,} so'm\n"
+    cart_text = ud.get("cart_text", "")
+    total = sum(i["price"]*i["qty"] for i in cart) if cart else 0
     user_store[uid]["total"] = total
 
     if lang == "uz":
-        summary = (f"📋 Buyurtma:\n\n👤 {ud['name']}\n📞 {ud['phone']}\n📍 {ud['address']}\n💳 {payment}\n\n🛍 Mahsulotlar:\n{items}\n💵 Jami: {total:,} so'm")
+        summary = (
+            f"📋 Buyurtma:\n\n"
+            f"👤 {ud.get('name','')}\n"
+            f"📞 {ud.get('phone','')}\n"
+            f"📍 {ud.get('address','')}\n"
+            f"💳 {payment}\n\n"
+            f"🛍 Mahsulotlar:\n{cart_text if cart_text else 'Ro\\'yxat yo\\'q'}\n\n"
+            f"💵 Jami: {total:,} so'm"
+        )
     else:
-        summary = (f"📋 Заказ:\n\n👤 {ud['name']}\n📞 {ud['phone']}\n📍 {ud['address']}\n💳 {payment}\n\n🛍 Товары:\n{items}\n💵 Итого: {total:,} сум")
+        summary = (
+            f"📋 Заказ:\n\n"
+            f"👤 {ud.get('name','')}\n"
+            f"📞 {ud.get('phone','')}\n"
+            f"📍 {ud.get('address','')}\n"
+            f"💳 {payment}\n\n"
+            f"🛍 Товары:\n{cart_text if cart_text else 'Список пуст'}\n\n"
+            f"💵 Итого: {total:,} сум"
+        )
 
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton(T[lang]["confirm_btn"], callback_data="order_confirm"),
@@ -283,15 +317,18 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data == "order_cancel":
         await q.message.reply_text(T[lang]["cancelled"])
         return await go_main(q.message, uid, context)
+    
     oid = new_oid()
     ud = user_store[uid]
     order = {
         "oid": oid, "uid": uid, "lang": lang,
-        "cart_text": user_store[uid].get('cart_text', ''),
         "name": ud.get("name"), "phone": ud.get("phone"),
         "address": ud.get("address"), "payment": ud.get("payment"),
-        "cart": ud.get("cart",[]), "total": ud.get("total",0),
-        "status": "pending", "created": datetime.now().strftime("%d.%m.%Y %H:%M"),
+        "cart": ud.get("cart", []),
+        "cart_text": ud.get("cart_text", ""),
+        "total": ud.get("total", 0),
+        "status": "pending",
+        "created": datetime.now().strftime("%d.%m.%Y %H:%M"),
         "tg_name": q.from_user.full_name,
         "tg_username": q.from_user.username or "yo'q",
     }
@@ -301,9 +338,10 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await go_main(q.message, uid, context)
 
 async def notify_admins(context, order):
-    items = ""
-    for it in order["cart"]:
-        items += f"  • {it['name']} × {it['qty']} = {it['price']*it['qty']:,} so'm\n"
+    cart_text = order.get("cart_text", "")
+    if not cart_text:
+        cart_text = '\n'.join([f"  • {i['name']} × {i['qty']} = {i['price']*i['qty']:,} so'm" for i in order.get("cart",[])])
+    
     text = (
         f"🆕 YANGI BUYURTMA!\n\n"
         f"📦 #{order['oid']}\n"
@@ -315,14 +353,18 @@ async def notify_admins(context, order):
         f"👤 Telegram: {order['tg_name']}\n"
         f"🔗 @{order['tg_username']}\n"
         f"🆔 ID: {order['uid']}\n\n"
-        f"🛍 Mahsulotlar:\n{items}\n"
+        f"🛍 Mahsulotlar:\n{cart_text}\n\n"
         f"💵 Jami: {order['total']:,} so'm"
     )
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Qabul", callback_data=f"adm_accept_{order['oid']}"),
-         InlineKeyboardButton("🚚 Yuborildi", callback_data=f"adm_ship_{order['oid']}")],
-        [InlineKeyboardButton("✅ Yetkazildi", callback_data=f"adm_deliver_{order['oid']}"),
-         InlineKeyboardButton("❌ Bekor", callback_data=f"adm_cancel_{order['oid']}")],
+        [
+            InlineKeyboardButton("✅ Qabul", callback_data=f"adm_accept_{order['oid']}"),
+            InlineKeyboardButton("🚚 Yuborildi", callback_data=f"adm_ship_{order['oid']}"),
+        ],
+        [
+            InlineKeyboardButton("✅ Yetkazildi", callback_data=f"adm_deliver_{order['oid']}"),
+            InlineKeyboardButton("❌ Bekor", callback_data=f"adm_cancel_{order['oid']}"),
+        ],
     ])
     for adm in [ADMIN_ID, ADMIN_ID2]:
         try:
@@ -338,7 +380,7 @@ async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order = order_store.get(oid)
     if not order: return
     uid = order["uid"]
-    lang = order.get("lang","uz")
+    lang = order.get("lang", "uz")
     status_map = {
         "accept": ("accepted", T[lang]["status"]["accepted"]),
         "ship": ("shipped", T[lang]["status"]["shipped"]),
@@ -348,36 +390,37 @@ async def admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action in status_map:
         new_status, user_msg = status_map[action]
         order["status"] = new_status
-        try: await context.bot.send_message(chat_id=uid, text=user_msg)
-        except: pass
-        labels = {"accepted":"✅ Qabul","shipped":"🚚 Yuborildi","delivered":"✅ Yetkazildi","cancelled":"❌ Bekor"}
-        try: await q.edit_message_text(q.message.text + f"\n\n{labels.get(new_status,'')} — {datetime.now().strftime('%H:%M')}", reply_markup=None)
-        except: pass
+        try:
+            await context.bot.send_message(chat_id=uid, text=user_msg)
+        except:
+            pass
+        labels = {
+            "accepted": "✅ Qabul",
+            "shipped": "🚚 Yuborildi",
+            "delivered": "✅ Yetkazildi",
+            "cancelled": "❌ Bekor"
+        }
+        try:
+            await q.edit_message_text(
+                q.message.text + f"\n\n{labels.get(new_status,'')} — {datetime.now().strftime('%H:%M')}",
+                reply_markup=None
+            )
+        except:
+            pass
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     return await go_main(update.message, uid, context)
 
-async def cmd_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    lang = get_lang(uid)
-    # Start checkout without cart - ask to select from mini app
-    await update.message.reply_text(
-        "📝 Ismingizni kiriting:" if lang=="uz" else "📝 Введите ваше имя:",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return GET_NAME
-
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
     app = Application.builder().token(BOT_TOKEN).build()
-    
+
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", cmd_start),
-            CommandHandler("order", cmd_order),
         ],
         states={
             SELECT_LANG: [CallbackQueryHandler(cb_lang, pattern="^lang_")],
@@ -386,25 +429,27 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu),
             ],
             GET_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            GET_PHONE: [MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND), get_phone)],
-            GET_ADDRESS: [MessageHandler(filters.LOCATION | (filters.TEXT & ~filters.COMMAND), get_address)],
+            GET_PHONE: [
+                MessageHandler(filters.CONTACT, get_phone),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone),
+            ],
+            GET_ADDRESS: [
+                MessageHandler(filters.LOCATION, get_address),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_address),
+            ],
             GET_PAYMENT: [CallbackQueryHandler(get_payment, pattern="^pay_")],
             CONFIRM_ORDER: [CallbackQueryHandler(confirm_order, pattern="^order_")],
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
         allow_reentry=True,
     )
-    
-    # web_app_data MUST be before conversation handler
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=0)
+
+    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=-1)
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(admin_action, pattern="^adm_"))
-    
+
     log.info("✅ Xon Halol bot ishga tushdi!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
-
-# This is already handled - when user closes mini app, 
-# they can press "Buyurtma berish" button in main menu
