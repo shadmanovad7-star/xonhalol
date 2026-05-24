@@ -202,19 +202,49 @@ async def webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info(f"WebApp data from {uid}")
     try:
         data = json.loads(update.message.web_app_data.data)
-        log.info(f"Action: {data.get('action')}, items: {len(data.get('cart',[]))}")
+        log.info(f"Action: {data.get('action')}, data keys: {list(data.keys())}")
     except Exception as e:
         log.error(f"WebApp parse error: {e}")
         return MAIN_MENU
 
     if data.get("action") == "checkout":
         cart = data.get("cart", [])
+        param = data.get("param", "")
+        
+        # Parse cart from param if cart is empty
+        if not cart and param.startswith("c_"):
+            try:
+                from urllib.parse import unquote
+                parts = param[2:].split("|")
+                for p in parts:
+                    seg = p.split("~")
+                    if len(seg) == 3:
+                        cart.append({
+                            "name": unquote(seg[0]),
+                            "qty": int(seg[1]),
+                            "price": int(seg[2])
+                        })
+            except Exception as e:
+                log.error(f"Cart parse error: {e}")
+        
         user_store.setdefault(uid, {})["cart"] = cart
-        user_store[uid]["cart_text"] = '\n'.join([f"• {i['name']} × {i['qty']} = {i['price']*i['qty']:,} so'm" for i in cart])
-        await update.message.reply_text(
-            tx(uid, "enter_name"),
-            reply_markup=ReplyKeyboardRemove()
-        )
+        user_store[uid]["cart_text"] = "\n".join([
+            f"• {i['name']} × {i['qty']} = {i['price']*i['qty']:,} so'm" 
+            for i in cart
+        ])
+        user_store[uid]["cart_total"] = sum(i["price"]*i["qty"] for i in cart)
+        
+        lang = get_lang(uid)
+        if cart:
+            cart_lines = "\n".join([f"• {i['name']} x{i['qty']} = {i['price']*i['qty']:,} som" for i in cart])
+            total = user_store[uid]["cart_total"]
+            if lang == "uz":
+                msg = f"🛒 Savatdagi mahsulotlar:\n\n{cart_lines}\n\n💵 Jami: {total:,} so'm\n\n📝 Ismingizni kiriting:"
+            else:
+                msg = f"🛒 Товары в корзине:\n\n{cart_lines}\n\n💵 Итого: {total:,} сум\n\n📝 Введите ваше имя:"
+            await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
+        else:
+            await update.message.reply_text(tx(uid, "enter_name"), reply_markup=ReplyKeyboardRemove())
         return GET_NAME
     return MAIN_MENU
 
