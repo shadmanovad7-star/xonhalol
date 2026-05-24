@@ -288,7 +288,7 @@ async def get_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📞 {ud.get('phone','')}\n"
             f"📍 {ud.get('address','')}\n"
             f"💳 {payment}\n\n"
-            f"🛍 Mahsulotlar:\n{cart_text if cart_text else 'Ro\\'yxat yo\\'q'}\n\n"
+            f"\U0001f6cd Mahsulotlar:\n{cart_text}\n\n"
             f"💵 Jami: {total:,} so'm"
         )
     else:
@@ -298,7 +298,7 @@ async def get_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📞 {ud.get('phone','')}\n"
             f"📍 {ud.get('address','')}\n"
             f"💳 {payment}\n\n"
-            f"🛍 Товары:\n{cart_text if cart_text else 'Список пуст'}\n\n"
+            f"🛍 Товары:\n{cart_text or 'Spisok pust'}\n\n"
             f"💵 Итого: {total:,} сум"
         )
 
