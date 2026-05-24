@@ -125,35 +125,35 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_store.setdefault(uid, {})
     
-    # Check if started with order parameter
     args = context.args
-    if args:
-        param = args[0]
-        if param.startswith('cart_'):
-            # Has cart data
-            try:
-                import base64
-                cart_b64 = param[5:]
-                # Pad base64
-                cart_b64 += '=' * (4 - len(cart_b64) % 4)
-                cart_json = base64.b64decode(cart_b64).decode('utf-8')
-                cart = json.loads(cart_json)
-                user_store[uid]['cart'] = cart
-                user_store[uid]['cart_text'] = '\n'.join([f"• {i['name']} × {i['qty']} = {i['price']*i['qty']:,} so'm" for i in cart])
-            except:
-                user_store[uid]['cart_text'] = ''
-            
-            await update.message.reply_text(
-                tx(uid, "enter_name"),
-                reply_markup=ReplyKeyboardRemove()
-            )
+    if args and args[0].startswith('c_'):
+        try:
+            from urllib.parse import unquote
+            parts = args[0][2:].split('|')
+            lines = []
+            total = 0
+            cart_list = []
+            for p in parts:
+                seg = p.split('~')
+                if len(seg) == 3:
+                    name = unquote(seg[0])
+                    qty = int(seg[1])
+                    price = int(seg[2])
+                    total += price * qty
+                    lines.append(f"• {name} x{qty} = {price*qty:,} som")
+                    cart_list.append({'name': name, 'qty': qty, 'price': price})
+            user_store[uid]['cart'] = cart_list
+            user_store[uid]['cart_text'] = '\n'.join(lines)
+            user_store[uid]['cart_total'] = total
+            lang = get_lang(uid)
+            if lang == 'uz':
+                msg = "🛒 Savatdagi mahsulotlar:\n\n" + '\n'.join(lines) + f"\n\n💵 Jami: {total:,} so'm\n\n📝 Ismingizni kiriting:"
+            else:
+                msg = "🛒 Товары в корзине:\n\n" + '\n'.join(lines) + f"\n\n💵 Итого: {total:,} сум\n\n📝 Введите ваше имя:"
+            await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
             return GET_NAME
-        elif param == 'order':
-            await update.message.reply_text(
-                tx(uid, "enter_name"),
-                reply_markup=ReplyKeyboardRemove()
-            )
-            return GET_NAME
+        except Exception as e:
+            pass
 
     await update.message.reply_text(
         "🍽 Muzlatilgan mazali taomlar\n🏠 Uy ta'mini eslatuvchi lazzat\n🕐 Buyurtmalar 24/7"
