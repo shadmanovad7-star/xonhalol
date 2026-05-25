@@ -13,7 +13,7 @@ from telegram.ext import (
     MessageHandler, filters, ContextTypes, ConversationHandler
 )
 
-BOT_TOKEN    = os.getenv("BOT_TOKEN", "8635217482:AAEkjYMV1qzzA6_1hEsTmhpyGlgpoS7J2XA")
+BOT_TOKEN    = os.getenv("BOT_TOKEN", "8635217482:AAHanyplv3Zlt4qhkzXtzEojbMDeyNKTdEw")
 ADMIN_ID     = int(os.getenv("ADMIN_ID", "6417175819"))
 ADMIN_ID2    = int(os.getenv("ADMIN_ID2", "5345513906"))
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://shadmanovad7-star.github.io/xonhalol/")
