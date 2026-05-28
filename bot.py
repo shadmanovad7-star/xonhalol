@@ -475,12 +475,14 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_store[uid]['cart_text'] = '\n'.join(lines)
             user_store[uid]['cart_total'] = total
             
+            cart_display = '\n'.join(lines)
+            
             result = InlineQueryResultArticle(
                 id='1',
                 title=f'✅ Buyurtma berish — {total:,} som',
-                description='\n'.join(lines[:3]),
+                description=', '.join([f"{i['name']} x{i['qty']}" for i in cart_list[:3]]),
                 input_message_content=InputTextMessageContent(
-                    f'/start c_{query[6:]}'
+                    f"🛒 Buyurtma:\n\n{cart_display}\n\n💵 Jami: {total:,} so'm\n\n/start c_{query[6:]}"
                 )
             )
             await update.inline_query.answer([result], cache_time=0)
