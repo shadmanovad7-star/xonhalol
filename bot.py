@@ -449,6 +449,44 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     return await go_main(update.message, uid, context)
 
+async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from telegram import InlineQueryResultArticle, InputTextMessageContent
+    query = update.inline_query.query
+    uid = update.inline_query.from_user.id
+    
+    if query.startswith('zakaz_'):
+        try:
+            from urllib.parse import unquote
+            parts = query[6:].split('|')
+            lines = []
+            total = 0
+            cart_list = []
+            for p in parts:
+                seg = p.split('~')
+                if len(seg) == 3:
+                    name = unquote(seg[0])
+                    qty = int(seg[1])
+                    price = int(seg[2])
+                    total += price * qty
+                    lines.append(f"• {name} x{qty} = {price*qty:,} som")
+                    cart_list.append({'name': name, 'qty': qty, 'price': price})
+            
+            user_store.setdefault(uid, {})['cart'] = cart_list
+            user_store[uid]['cart_text'] = '\n'.join(lines)
+            user_store[uid]['cart_total'] = total
+            
+            result = InlineQueryResultArticle(
+                id='1',
+                title=f'✅ Buyurtma berish — {total:,} som',
+                description='\n'.join(lines[:3]),
+                input_message_content=InputTextMessageContent(
+                    f'/start c_{query[6:]}'
+                )
+            )
+            await update.inline_query.answer([result], cache_time=0)
+        except Exception as e:
+            log.error(f'Inline query error: {e}')
+
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -488,7 +526,9 @@ def main():
         allow_reentry=True,
     )
 
+    from telegram.ext import InlineQueryHandler
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, webapp_data), group=-1)
+    app.add_handler(InlineQueryHandler(inline_query))
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(admin_action, pattern="^adm_"))
 
