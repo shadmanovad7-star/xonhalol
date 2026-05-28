@@ -112,6 +112,7 @@ def main_kb(uid):
     lang = get_lang(uid)
     return ReplyKeyboardMarkup([
         [KeyboardButton(T[lang]["btn_products"])],
+        [KeyboardButton("📦 Buyurtma berish" if lang == "uz" else "📦 Оформить заказ")],
         [KeyboardButton(T[lang]["btn_orders"])],
         [KeyboardButton(T[lang]["btn_contact"])],
     ], resize_keyboard=True)
@@ -178,6 +179,12 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     lang = get_lang(uid)
     text = update.message.text
+    if text in ["📦 Buyurtma berish", "📦 Оформить заказ"]:
+        await update.message.reply_text(
+            "📝 Ismingizni kiriting:" if lang == "uz" else "📝 Введите ваше имя:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return GET_NAME
     if text == T[lang]["btn_products"]:
         kb = InlineKeyboardMarkup([[
             InlineKeyboardButton(T[lang]["open_btn"], web_app=WebAppInfo(url=MINI_APP_URL))
