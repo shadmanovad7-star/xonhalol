@@ -445,6 +445,13 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    
+    # Delete any existing webhook first
+    import urllib.request
+    try:
+        urllib.request.urlopen(f'https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true')
+    except:
+        pass
 
     app = Application.builder().token(BOT_TOKEN).build()
 
